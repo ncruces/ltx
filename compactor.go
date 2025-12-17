@@ -4,12 +4,36 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync/atomic"
 )
+
+// CompactorStatus represents the current progress of compaction.
+type CompactorStatus struct {
+	N     uint32 // Last page number that was compacted
+	Total uint32 // Total pages to compact (from Commit field)
+}
+
+// IsZero returns true if the status has not been initialized.
+func (s CompactorStatus) IsZero() bool {
+	return s.N == 0 && s.Total == 0
+}
+
+// Pct returns the percentage of compaction complete (0.0 to 1.0).
+// Returns 0 if Total is zero.
+func (s CompactorStatus) Pct() float64 {
+	if s.Total == 0 {
+		return 0
+	}
+	return float64(s.N) / float64(s.Total)
+}
 
 // Compactor represents a compactor of LTX files.
 type Compactor struct {
 	enc    *Encoder
 	inputs []*compactorInput
+
+	n     atomic.Uint32 // last page that was compacted
+	total atomic.Uint32 // total pages (from last input's Commit)
 
 	// These flags will be set when encoding the header.
 	HeaderFlags uint32
@@ -40,6 +64,15 @@ func (c *Compactor) Header() Header { return c.enc.Header() }
 
 // Trailer returns the LTX trailer of the compacted file. Only valid after successful Compact().
 func (c *Compactor) Trailer() Trailer { return c.enc.Trailer() }
+
+// Status returns the current compaction progress.
+// Safe to call concurrently from another goroutine.
+func (c *Compactor) Status() CompactorStatus {
+	return CompactorStatus{
+		N:     c.n.Load(),
+		Total: c.total.Load(),
+	}
+}
 
 // Compact merges the input readers into a single LTX writer.
 func (c *Compactor) Compact(ctx context.Context) (retErr error) {
@@ -88,6 +121,9 @@ func (c *Compactor) Compact(ctx context.Context) (retErr error) {
 		return fmt.Errorf("write header: %w", err)
 	}
 
+	// Set total page count for progress tracking.
+	c.total.Store(maxHdr.Commit)
+
 	// Write page headers & data.
 	if err := c.writePageBlock(ctx); err != nil {
 		return err
@@ -129,6 +165,9 @@ func (c *Compactor) writePageBlock(ctx context.Context) error {
 		if err := c.writePageBuffer(ctx, pgno); err != nil {
 			return err
 		}
+
+		// Update progress after each page is written.
+		c.n.Store(pgno)
 	}
 
 	return nil
