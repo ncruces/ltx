@@ -73,7 +73,7 @@ func TestDecoder(t *testing.T) {
 	}
 
 	// Read page 1 by offset.
-	if hdr, data, err := ltx.DecodePageData(fileSpecData[100:]); err != nil {
+	if hdr, data, err := ltx.DecodePageData(fileSpecData[100:151]); err != nil {
 		t.Fatal(err)
 	} else if got, want := hdr, (ltx.PageHeader{Pgno: 1}); got != want {
 		t.Fatalf("page header mismatch:\ngot=%#v\nwant=%#v", got, want)
@@ -82,7 +82,7 @@ func TestDecoder(t *testing.T) {
 	}
 
 	// Read page 2 by offset.
-	if hdr, data, err := ltx.DecodePageData(fileSpecData[151:]); err != nil {
+	if hdr, data, err := ltx.DecodePageData(fileSpecData[151:202]); err != nil {
 		t.Fatal(err)
 	} else if got, want := hdr, (ltx.PageHeader{Pgno: 2}); got != want {
 		t.Fatalf("page header mismatch:\ngot=%#v\nwant=%#v", got, want)

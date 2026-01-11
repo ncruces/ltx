@@ -7,6 +7,7 @@ import (
 	"hash"
 	"hash/crc64"
 	"io"
+	"math"
 
 	"github.com/pierrec/lz4/v4"
 )
@@ -173,7 +174,8 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 	}
 
 	// Read page data next.
-	dec.zr.Reset(dec.r)
+	lr := io.LimitedReader{R: dec.r, N: math.MaxInt64}
+	dec.zr.Reset(&lr)
 	if _, err := io.ReadFull(dec.zr, data); err != nil {
 		return err
 	}
@@ -181,6 +183,7 @@ func (dec *Decoder) DecodePage(hdr *PageHeader, data []byte) error {
 	dec.pageN++
 
 	// Read off the LZ4 trailer frame to ensure we hit EOF.
+	lr.N = 8 // 4 bytes for the EndMark and 4 for the checksum.
 	if err := dec.readLZ4Trailer(); err != nil {
 		return fmt.Errorf("read lz4 trailer: %w", err)
 	}
